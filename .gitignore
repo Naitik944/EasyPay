@@ -1,0 +1,54 @@
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+!.env.template
+!.env.sample
+
+# Private keys, certificates, and local credential files
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+credentials.json
+service-account*.json
+
+# Python generated files and local environments
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.egg-info/
+dist/
+build/
+
+# IDE and editor metadata
+.idea/
+.vscode/
+*.iml
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+
+# Logs and local runtime output
+*.log
+logs/
+*.pid
+
+# Frontend dependencies and build output
+node_modules/
+frontend/dist/
+frontend/build/
