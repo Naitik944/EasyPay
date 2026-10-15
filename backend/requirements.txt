@@ -1,6 +1,5 @@
-fastapi
-uvicorn
-supabase
-requests
-python-dotenv
-razorpay
+fastapi>=0.115
+uvicorn[standard]>=0.30
+requests>=2.32
+python-dotenv>=1.0
+razorpay>=1.4

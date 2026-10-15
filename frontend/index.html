@@ -1,237 +1,261 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EasyPay | AI-Powered Finance Portal</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%22//90%22>👛</text></svg>">
+    <meta name="theme-color" content="#2563eb">
+    <title>EasyPay | Smart Wallet</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%232563eb'/%3E%3Cpath d='M36 8 17 35h14l-3 21 19-29H33z' fill='white'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head>
 <body>
-    <!-- AI Voice Status Bubble -->
-    <div id="voice-bubble" class="voice-bubble hidden">
-        <div class="bubble-content">
-            <i class="fas fa-robot"></i>
-            <span id="voice-status-text">EasyPay AI is listening...</span>
-        </div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="voice-bubble" class="voice-bubble" aria-live="polite">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+        <span id="voice-status">EasyPay AI is ready.</span>
     </div>
 
-    <div id="page-login" class="page active">
-        <div class="login-container">
-            <div class="login-card">
-                <div class="login-header">
-                    <div class="logo-icon"><i class="fas fa-bolt"></i></div>
-                    <h1>Welcome to EasyPay</h1>
-                    <p>Secure your financial future with AI</p>
-                </div>
-                <div class="login-form">
-                    <div class="form-group">
-                        <label>Email Address</label>
-                        <input type="email" id="login-email" placeholder="name@company.com">
-                    </div>
-                    <div class="form-group">
-                        <label>Password</label>
-                        <input type="password" id="login-password" placeholder="••••••••">
-                    </div>
-                    <button id="login-btn" class="pay-btn">Sign In</button>
-                </div>
+    <section id="auth-screen" class="auth-screen">
+        <div class="auth-card">
+            <div class="brand-mark"><i class="fa-solid fa-bolt"></i></div>
+            <div id="signin-panel">
+                <h1 data-i18n="auth.signin_title">Welcome to EasyPay</h1>
+                <p class="auth-subtitle" data-i18n="auth.signin_subtitle">Sign in to manage your wallet securely.</p>
+                <form id="signin-form" novalidate>
+                    <label for="signin-email" data-i18n="auth.email">Email address</label>
+                    <input id="signin-email" type="email" autocomplete="email" placeholder="you@example.com" required>
+                    <label for="signin-password" data-i18n="auth.password">Password</label>
+                    <input id="signin-password" type="password" autocomplete="current-password" placeholder="Your password" required>
+                    <button id="signin-btn" class="primary-button" type="submit" data-i18n="auth.signin_btn">Sign In</button>
+                </form>
+                <p class="auth-switch">
+                    <span data-i18n="auth.new_user">New to EasyPay?</span> 
+                    <button id="show-signup" class="text-button" type="button" data-i18n="auth.create_account">Create an account</button>
+                </p>
             </div>
-        </div>
-    </div>
 
-    <div id="app-container" class="app-container hidden">
+            <div id="signup-panel" class="hidden">
+                <h1 data-i18n="auth.signup_title">Create your account</h1>
+                <p class="auth-subtitle" data-i18n="auth.signup_subtitle">Use an email address and a strong password.</p>
+                <form id="signup-form" novalidate>
+                    <label for="signup-name" data-i18n="auth.name">Full name</label>
+                    <input id="signup-name" type="text" autocomplete="name" placeholder="Your name" required>
+                    <label for="signup-email" data-i18n="auth.email">Email address</label>
+                    <input id="signup-email" type="email" autocomplete="email" placeholder="you@example.com" required>
+                    <label for="signup-password" data-i18n="auth.password">Password</label>
+                    <input id="signup-password" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" required>
+                    <button id="signup-btn" class="primary-button" type="submit" data-i18n="auth.signup_btn">Create Account</button>
+                </form>
+                <p class="auth-switch">
+                    <span data-i18n="auth.already_user">Already have an account?</span> 
+                    <button id="show-signin" class="text-button" type="button" data-i18n="auth.signin">Sign in</button>
+                </p>
+            </div>
+            <p id="auth-message" class="auth-message" role="status" aria-live="polite"></p>
+        </div>
+    </section>
+
+    <div id="app-shell" class="app-shell hidden">
         <aside class="sidebar">
-            <div class="logo">
-                <div class="logo-icon"><i class="fas fa-bolt"></i></div>
-                <span>EasyPay</span>
+            <div class="brand">
+                <div class="brand-mark small"><i class="fa-solid fa-bolt"></i></div>
+                <span data-i18n="nav.brand">EasyPay</span>
             </div>
-            <nav>
-                <div class="nav-group">Main</div>
-                <a href="#" class="nav-item active" data-page="dashboard"><i class="fas fa-th-large"></i> Dashboard</a>
-                <a href="#" class="nav-item" data-page="recharge"><i class="fas fa-credit-card"></i> Recharge</a>
-                <a href="#" class="nav-item" data-page="vendor"><i class="fas fa-store"></i> Pay Vendor</a>
-                <a href="#" class="nav-item" data-page="history"><i class="fas fa-history"></i> History</a>
-                <div class="nav-group">Account</div>
-                <a href="#" class="nav-item" data-page="settings"><i class="fas fa-cog"></i> Settings</a>
+            <nav class="side-nav" aria-label="Main navigation">
+                <span class="nav-label" data-i18n="nav.main">Main</span>
+                <button class="nav-item active" type="button" data-page="dashboard"><i class="fa-solid fa-table-cells-large"></i> <span data-i18n="nav.dashboard">Dashboard</span></button>
+                <button class="nav-item" type="button" data-page="recharge"><i class="fa-solid fa-wallet"></i> <span data-i18n="nav.recharge">Recharge</span></button>
+                <button class="nav-item" type="button" data-page="vendor"><i class="fa-solid fa-store"></i> <span data-i18n="nav.vendor">Pay Vendor</span></button>
+                <button class="nav-item" type="button" data-page="history"><i class="fa-solid fa-clock-rotate-left"></i> <span data-i18n="nav.history">History</span></button>
+                <span class="nav-label account-label" data-i18n="nav.account">Account</span>
+                <button class="nav-item" type="button" data-page="settings"><i class="fa-solid fa-gear"></i> <span data-i18n="nav.settings">Settings</span></button>
             </nav>
-            <div class="sidebar-footer">
-                <div class="user-info">
-                    <img src="https://ui-avatars.com/api/?name=Naitik+Singh&background=2563eb&color=fff" alt="Avatar">
-                    <div class="user-text">
-                        <span class="user-name">Naitik Singh</span>
-                        <span class="user-status">Premium Member</span>
-                    </div>
+            <div class="sidebar-user">
+                <div class="user-initials" id="user-initials">EP</div>
+                <div>
+                    <strong id="sidebar-name">EasyPay user</strong>
+                    <span id="sidebar-email">Signed in</span>
                 </div>
-                <button id="logout-btn" class="logout-btn"><i class="fas fa-sign-out-alt"></i></button>
+                <button id="logout-btn" class="icon-button" type="button" title="Sign out" aria-label="Sign out"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
             </div>
         </aside>
 
         <main class="main-content">
             <header class="top-bar">
-                <div class="search-bar">
-                    <i class="fas fa-search"></i>
-                    <input type="text" placeholder="Search transactions, contacts...">
-                </div>
+                <div class="top-title"><span class="eyebrow" data-i18n="top.eyebrow">Personal wallet</span><strong id="header-name">EasyPay</strong></div>
                 <div class="top-actions">
-                    <button id="global-voice-btn" class="ai-voice-btn" title="Activate AI Voice Assistant">
-                        <i class="fas fa-wand-magic-sparkles"></i>
-                        <span>AI Voice</span>
-                    </button>
+                    <button id="refresh-btn" class="subtle-button" type="button"><i class="fa-solid fa-rotate"></i> <span data-i18n="top.refresh">Refresh</span></button>
+                    <button id="ai-voice-btn" class="voice-button" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="top.ai_voice">AI Voice</span></button>
                 </div>
             </header>
 
-            <div id="page-dashboard" class="page">
-                <div class="welcome-section">
-                    <h1 id="welcome-text">Welcome back, Naitik! 👋</h1>
-                    <p>Here's what's happening with your money today.</p>
+            <section id="page-dashboard" class="page">
+                <div class="page-heading">
+                    <div>
+                        <h1 id="welcome-title">Welcome back</h1>
+                        <p data-i18n="dash.subtitle">Here is your wallet activity in real time.</p>
+                    </div>
+                    <span id="realtime-status" class="status-pill" data-i18n="dash.realtime_connecting">Connecting live updates…</span>
                 </div>
 
                 <div class="stats-grid">
-                    <div class="stat-card balance">
-                        <div class="stat-label">Available Balance</div>
-                        <div class="stat-value" id="balance-val">/bin/zsh.00</div>
-                        <div class="stat-trend positive"><i class="fas fa-arrow-up"></i> 2.5% this month</div>
-                    </div>
-                    <div class="stat-card income">
-                        <div class="stat-label">Monthly Income</div>
-                        <div class="stat-value" id="income-val">/bin/zsh.00</div>
-                        <div class="stat-trend positive"><i class="fas fa-arrow-up"></i> 12% vs last month</div>
-                    </div>
-                    <div class="stat-card expenses">
-                        <div class="stat-label">Monthly Expenses</div>
-                        <div class="stat-value" id="expenses-val">/bin/zsh.00</div>
-                        <div class="stat-trend negative"><i class="fas fa-arrow-down"></i> 4% vs last month</div>
-                    </div>
+                    <article class="stat-card balance-card">
+                        <span data-i18n="dash.balance_label">Available balance</span>
+                        <strong id="balance-value">₹0.00</strong>
+                        <small data-i18n="dash.balance_desc">Ready to spend from your EasyPay wallet</small>
+                    </article>
+                    <article class="stat-card">
+                        <span data-i18n="dash.income_label">Monthly recharges</span>
+                        <strong id="income-value">₹0.00</strong>
+                        <small class="positive"><i class="fa-solid fa-arrow-trend-up"></i> <span data-i18n="dash.income_desc">Funds added this month</span></small>
+                    </article>
+                    <article class="stat-card">
+                        <span data-i18n="dash.expense_label">Monthly wallet payments</span>
+                        <strong id="expense-value">₹0.00</strong>
+                        <small class="negative"><i class="fa-solid fa-arrow-trend-down"></i> <span data-i18n="dash.expense_desc">Wallet debits this month</span></small>
+                    </article>
                 </div>
 
-                <div class="dashboard-main-grid">
-                    <div class="card transactions-card">
-                        <div class="card-header">
-                            <span>Recent Transactions</span>
-                            <a href="#" class="view-all">View All</a>
+                <div class="dashboard-grid">
+                    <article class="panel transactions-panel">
+                        <div class="panel-header">
+                            <div><h2 data-i18n="dash.tx_title">Recent transactions</h2><p data-i18n="dash.tx_subtitle">New activity appears automatically.</p></div>
+                            <button class="link-button" type="button" data-open-page="history" data-i18n="dash.view_all">View all</button>
                         </div>
-                        <div class="table-wrapper">
+                        <div class="table-wrap">
                             <table>
-                                <thead>
-                                    <tr>
-                                        <th>Transaction</th>
-                                        <th>Category</th>
-                                        <th>Model</th>
-                                        <th>Date</th>
-                                        <th>Amount</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="transaction-body"></tbody>
+                                <thead><tr id="tx-table-head"><th>Transaction</th><th>Category</th><th>Model / source</th><th>Date</th><th class="right">Amount</th></tr></thead>
+                                <tbody id="recent-transactions"></tbody>
                             </table>
                         </div>
-                    </div>
+                    </article>
 
-                    <div class="card ai-widget">
-                        <div class="card-header">AI Financial Insight</div>
-                        <div id="ai-insight-window" class="ai-insight-window">
-                            <div class="ai-msg">Analyzing your spending...</div>
+                    <article class="panel ai-panel">
+                        <div class="panel-header compact"><div><h2 data-i18n="ai.title">EasyPay AI</h2><p data-i18n="ai.subtitle">Powered locally by Qwen3:8B</p></div></div>
+                        <div id="ai-messages" class="ai-messages" aria-live="polite">
+                            <div class="message assistant" data-i18n="ai.welcome">Ask for a spending insight, say “recharge ₹50”, or “pay ₹25 to a vendor”. I will always ask before opening Razorpay or debiting your wallet.</div>
                         </div>
-                        <div class="ai-input-group">
-                            <input type="text" id="ai-prompt" placeholder="Ask AI or use voice...">
-                            <button id="voice-btn" class="voice-btn"><i class="fas fa-microphone"></i></button>
-                            <button id="ai-send-btn"><i class="fas fa-paper-plane"></i></button>
-                        </div>
-                    </div>
+                        <form id="ai-form" class="chat-form">
+                            <input id="ai-input" type="text" maxlength="800" placeholder="Ask EasyPay AI…" data-i18n-placeholder="ai.placeholder">
+                            <button class="send-button" type="submit" aria-label="Send to EasyPay AI"><i class="fa-solid fa-paper-plane"></i></button>
+                        </form>
+                    </article>
                 </div>
-            </div>
+            </section>
 
-            <div id="page-recharge" class="page">
-                <div class="welcome-section">
-                    <h1>Recharge Account 💳</h1>
-                    <p>Add funds to your EasyPay wallet instantly.</p>
-                </div>
-                <div class="recharge-container">
-                    <div class="card recharge-card">
-                        <div class="card-header">Enter Amount</div>
-                        <div class="recharge-form">
-                            <div class="input-wrapper">
-                                <span class="currency-symbol">₹</span>
-                                <input type="number" id="recharge-amount" placeholder="0.00">
+            <section id="page-recharge" class="page">
+                <div class="page-heading"><div><h1 data-i18n="recharge.title">Recharge wallet</h1><p data-i18n="recharge.subtitle">Add money securely with Razorpay.</p></div></div>
+                <article class="form-panel">
+                    <div class="form-intro"><i class="fa-solid fa-shield-halved"></i><div><h2 data-i18n="recharge.checkout_title">Razorpay checkout</h2><p data-i18n="recharge.checkout_desc">Your payment is verified on the server before the wallet balance changes.</p></div></div>
+                    <form id="recharge-form" class="payment-form">
+                        <label for="recharge-amount" data-i18n="recharge.label_amount">Amount</label>
+                        <div class="money-input"><span>₹</span><input id="recharge-amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" placeholder="0.00" required></div>
+                        <button id="recharge-btn" class="primary-button" type="submit" data-i18n="recharge.btn">Continue to Razorpay</button>
+                    </form>
+                </article>
+            </section>
+
+            <section id="page-vendor" class="page">
+                <div class="page-heading"><div><h1 data-i18n="vendor.title">Pay vendor</h1><p data-i18n="vendor.subtitle">Record a wallet payment to a merchant or UPI recipient.</p></div></div>
+                
+                <div class="vendor-layout">
+                    <article class="form-panel">
+                        <div class="form-intro"><i class="fa-solid fa-building-columns"></i><div><h2 data-i18n="vendor.payment_title">Wallet payment</h2><p data-i18n="vendor.payment_desc">This prototype records a verified EasyPay wallet debit. It does not yet send a real UPI payout to the recipient.</p></div></div>
+                        <form id="vendor-form" class="payment-form">
+                            <label for="vendor-name" data-i18n="vendor.label_name">Vendor or recipient name</label>
+                            <div class="input-group">
+                                <input id="vendor-name" type="text" maxlength="80" placeholder="e.g. ABC Traders" required>
+                                <button type="button" class="icon-input-btn" title="Scan QR Code"><i class="fa-solid fa-qrcode"></i></button>
                             </div>
-                            <button id="pay-now-btn" class="pay-btn">Pay Now with Razorpay</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                            <label for="vendor-upi" data-i18n="vendor.label_upi">UPI ID <span class="optional" data-i18n="common.optional">(optional reference)</span></label>
+                            <input id="vendor-upi" type="text" maxlength="120" placeholder="merchant@upi">
+                            <label for="vendor-amount" data-i18n="vendor.label_amount">Amount</label>
+                            <div class="money-input"><span>₹</span><input id="vendor-amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" placeholder="0.00" required></div>
+                            <label for="vendor-note" data-i18n="vendor.label_note">Payment note <span class="optional" data-i18n="common.optional">(optional)</span></label>
+                            <input id="vendor-note" type="text" maxlength="100" placeholder="e.g. Lunch, Rent, Office supplies">
+                            <button class="primary-button" type="submit" data-i18n="vendor.btn">Confirm wallet payment</button>
+                        </form>
+                    </article>
 
-            <div id="page-vendor" class="page">
-                <div class="welcome-section">
-                    <h1>Pay Vendor 🏪</h1>
-                    <p>Securely pay vendors via Razorpay gateway.</p>
-                </div>
-                <div class="vendor-container">
-                    <div class="card vendor-card">
-                        <div class="card-header">Payment Details</div>
-                        <div class="vendor-form">
-                            <div class="form-group">
-                                <label>Vendor Name</label>
-                                <input type="text" id="vendor-name" placeholder="e.g. Amazon, Local Store">
-                            </div>
-                            <div class="form-group">
-                                <label>Amount to Pay</label>
-                                <div class="input-wrapper">
-                                    <span class="currency-symbol">₹</span>
-                                    <input type="number" id="vendor-amount" placeholder="0.00">
-                                </div>
-                            </div>
-                            <button id="send-payment-btn" class="pay-btn">Pay Now via Razorpay</button>
+                    <article class="panel recent-vendors-panel">
+                        <div class="panel-header compact"><h2 data-i18n="vendor.recent_title">Recent Vendors</h2><p data-i18n="vendor.recent_subtitle">Quickly pay frequent recipients.</p></div>
+                        <div id="recent-vendors-list" class="vendor-chips-grid">
+                            <!-- Vendor chips loaded by JS -->
                         </div>
-                    </div>
+                    </article>
                 </div>
-            </div>
+            </section>
 
-            <div id="page-history" class="page">
-                <div class="welcome-section">
-                    <h1>Transaction History</h1>
-                    <p>Full detailed logs of all your financial activity.</p>
-                </div>
-                <div class="card history-card">
-                    <div class="table-wrapper">
+            <section id="page-history" class="page">
+                <div class="page-heading"><div><h1 data-i18n="history.title">Transaction history</h1><p data-i18n="history.subtitle">Wallet credits, debits, and the model/source used for each record.</p></div></div>
+                <article class="panel history-panel">
+                    <div class="table-wrap">
                         <table>
-                            <thead>
-                                <tr>
-                                    <th>Transaction</th>
-                                    <th>Category</th>
-                                    <th>Model</th>
-                                    <th>Date</th>
-                                    <th>Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody id="full-history-body"></tbody>
+                            <thead id="history-table-head"><tr id="history-table-row"><th>Transaction</th><th>Category</th><th>Model / source</th><th>Date</th><th class="right">Amount</th></tr></thead>
+                            <tbody id="history-transactions"></tbody>
                         </table>
                     </div>
-                </div>
-            </div>
-            <div id="page-ai" class="page">
-                <div class="welcome-section">
-                    <h1>EasyPay AI Advisor</h1>
-                    <p>Deep dive into your finances with Qwen3:8B.</p>
-                </div>
-                <div class="full-chat-container">
-                    <div id="full-chat-window" class="full-chat-window"></div>
-                    <div class="full-chat-input">
-                        <input type="text" id="full-ai-prompt" placeholder="How can I save more money this month?">
-                        <button id="full-ai-send-btn"><i class="fas fa-paper-plane"></i></button>
+                </article>
+            </section>
+
+            <section id="page-settings" class="page">
+                <div class="page-heading"><div><h1 data-i18n="settings.title">Settings</h1><p data-i18n="settings.subtitle">Your account and connection details.</p></div></div>
+                <article class="form-panel settings-panel">
+                    <div class="settings-group">
+                        <h2 data-i18n="settings.pref_title">Preferences</h2>
+                        <div class="settings-row">
+                            <label for="app-lang" data-i18n="settings.lang_label">Interface & AI Language</label>
+                            <select id="app-lang" class="settings-select">
+                                <option value="en" data-label="English">English</option>
+                                <option value="hi" data-label="हिन्दी">हिन्दी (Hindi)</option>
+                                <option value="ta" data-label="தமிழ்">தமிழ் (Tamil)</option>
+                                <option value="te" data-label="తెలుగు">తెలుగు (Telugu)</option>
+                                <option value="bn" data-label="বাংলা">বাংলা (Bengali)</option>
+                                <option value="mr" data-label="मराठी">मराठी (Marathi)</option>
+                                <option value="gu" data-label="ગુજરાતી">ગુજરાતી (Gujarati)</option>
+                                <option value="kn" data-label="ಕನ್ನಡ">ಕನ್ನಡ (Kannada)</option>
+                                <option value="ml" data-label="മലയാളം">മലയാളം (Malayalam)</option>
+                            </select>
+                        </div>
                     </div>
-                </div>
-            </div>
-            <div id="page-settings" class="page">
-                <div class="welcome-section">
-                    <h1>Settings</h1>
-                    <p>Manage your profile, security, and preferences.</p>
-                </div>
-            </div>
+                    <div class="settings-group">
+                        <h2 data-i18n="settings.auth_title">Email-only sign-in</h2>
+                        <p data-i18n="settings.auth_desc">Signed in as <strong id="settings-email">—</strong>. Google sign-in is not enabled in this app.</p>
+                        <p data-i18n="settings.realtime_label">Live Supabase updates: <strong id="settings-realtime">Connecting…</strong></p>
+                        <button id="settings-refresh" class="subtle-button" type="button"><i class="fa-solid fa-rotate"></i> <span data-i18n="settings.refresh">Refresh wallet data</span></button>
+                    </div>
+                </article>
+            </section>
         </main>
     </div>
+
+    <div id="confirm-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <i class="fa-solid fa-circle-question"></i>
+                <h2 data-i18n="modal.title">Confirm Payment</h2>
+            </div>
+            <div class="modal-body">
+                <p data-i18n="modal.body">Are you sure you want to send this amount from your wallet?</p>
+                <div class="payment-summary">
+                    <div class="summary-row"><span data-i18n="modal.recipient">Recipient:</span> <strong id="confirm-vendor">—</strong></div>
+                    <div class="summary-row"><span data-i18n="modal.amount">Amount:</span> <strong id="confirm-amount">₹0.00</strong></div>
+                    <div class="summary-row"><span data-i18n="modal.source">Source:</span> <strong data-i18n="modal.source_val">EasyPay Wallet</strong></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="confirm-cancel-btn" class="subtle-button" data-i18n="modal.cancel">Cancel</button>
+                <button id="confirm-pay-btn" class="primary-button" data-i18n="modal.confirm">Yes, Send Money</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
