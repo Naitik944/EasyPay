@@ -9,6 +9,9 @@ let refreshTimer = null;
 let fallbackRefreshTimer = null;
 let lastAccount = null;
 let currentLang = "en";
+let sessionVersion = 0;
+let activeCheckout = null;
+let activeRecognition = null;
 
 const translations = {
     en: {
@@ -777,20 +780,34 @@ function apiErrorMessage(error) {
     return error instanceof Error ? error.message : "Something went wrong. Please try again.";
 }
 
-async function getAccessToken() {
+// A version also distinguishes logging out and back into the same account.
+function isCurrentSession(version) {
+    return Boolean(currentUser) && version === sessionVersion;
+}
+
+function requireCurrentSession(version) {
+    if (!isCurrentSession(version)) throw new Error("The account session changed.");
+}
+
+async function getAccessToken(version) {
     const { data, error } = await supabaseClient.auth.getSession();
-    if (error || !data.session) throw new Error("Your session has expired. Please sign in again.");
+    requireCurrentSession(version);
+    if (error || !data.session || data.session.user.id !== currentUser.id) throw new Error("Your session has expired. Please sign in again.");
     currentSession = data.session;
     return data.session.access_token;
 }
 
-async function api(path, options = {}) {
-    const token = await getAccessToken();
+async function api(path, options = {}, version = sessionVersion) {
+    requireCurrentSession(version);
+    const token = await getAccessToken(version);
+    requireCurrentSession(version);
     const headers = new Headers(options.headers || {});
     headers.set("Authorization", `Bearer ${token}`);
     if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    requireCurrentSession(version);
     const body = await response.json().catch(() => ({}));
+    requireCurrentSession(version);
     if (!response.ok) {
         if (response.status === 401) await signOut();
         throw new Error(body.detail || "The request could not be completed.");
@@ -816,8 +833,9 @@ async function initialize() {
             }
         });
 
+        const version = sessionVersion;
         const { data } = await supabaseClient.auth.getSession();
-        if (data.session?.user) await enterApp(data.session);
+        if (version === sessionVersion && data.session?.user) await enterApp(data.session);
         
         applyTranslations();
     } catch (error) {
@@ -858,8 +876,10 @@ function bindEvents() {
     // Mock QR scan
     document.querySelectorAll(".icon-input-btn").forEach(btn => {
         btn.addEventListener("click", () => {
+            const version = sessionVersion;
             showToast("Scanning QR code... (Simulation)");
             window.setTimeout(() => {
+                if (!isCurrentSession(version)) return;
                 byId("vendor-name").value = "Sample Merchant";
                 byId("vendor-upi").value = "merchant@upi";
                 showToast("Vendor identified successfully!");
@@ -876,8 +896,10 @@ function showAuthPanel(panel) {
 
 async function signIn(event) {
     event.preventDefault();
+    const version = sessionVersion;
     const email = byId("signin-email").value.trim();
     const password = byId("signin-password").value;
+    byId("signin-password").value = "";
     if (!email || !password) return setAuthMessage("Enter your email address and password.", true);
 
     const button = byId("signin-btn");
@@ -885,21 +907,25 @@ async function signIn(event) {
     setAuthMessage("");
     try {
         const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (version !== sessionVersion) return;
         if (error) throw error;
         if (!data.session) throw new Error("Supabase did not create a sign-in session.");
         await enterApp(data.session);
     } catch (error) {
+        if (version !== sessionVersion) return;
         setAuthMessage(apiErrorMessage(error), true);
     } finally {
-        setButtonBusy(button, false);
+        if (version === sessionVersion) setButtonBusy(button, false);
     }
 }
 
 async function signUp(event) {
     event.preventDefault();
+    const version = sessionVersion;
     const fullName = byId("signup-name").value.trim();
     const email = byId("signup-email").value.trim();
     const password = byId("signup-password").value;
+    byId("signup-password").value = "";
     if (!fullName || !email || !password) return setAuthMessage("Complete every field to create an account.", true);
     if (password.length < 8) return setAuthMessage("Use a password with at least 8 characters.", true);
 
@@ -910,6 +936,7 @@ async function signUp(event) {
         const options = { data: { full_name: fullName } };
         if (window.location.origin !== "null") options.emailRedirectTo = `${window.location.origin}${window.location.pathname}`;
         const { data, error } = await supabaseClient.auth.signUp({ email, password, options });
+        if (version !== sessionVersion) return;
         if (error) throw error;
         if (data.session) {
             await enterApp(data.session);
@@ -918,14 +945,20 @@ async function signUp(event) {
         showAuthPanel("signin");
         setAuthMessage("Account created. Check your email, confirm the address, then sign in.");
     } catch (error) {
+        if (version !== sessionVersion) return;
         setAuthMessage(apiErrorMessage(error), true);
     } finally {
-        setButtonBusy(button, false);
+        if (version === sessionVersion) setButtonBusy(button, false);
     }
 }
 
 async function enterApp(session) {
     if (!session?.user) return;
+    if (currentUser?.id === session.user.id) {
+        currentSession = session;
+        return;
+    }
+    leaveApp();
     currentSession = session;
     currentUser = session.user;
     const name = displayName();
@@ -937,17 +970,48 @@ async function enterApp(session) {
     byId("settings-email").textContent = currentUser.email || "—";
     byId("user-initials").textContent = initials(name);
     byId("welcome-title").textContent = `Welcome back, ${name.split(" ")[0]} 👋`;
-    await setupRealtime();
-    await loadDashboard(true);
+    const version = sessionVersion;
+    await setupRealtime(version);
+    if (isCurrentSession(version)) await loadDashboard(true);
+}
+
+function clearSessionData() {
+    ["signin-form", "signup-form", "ai-form", "vendor-form", "recharge-form"].forEach((id) => byId(id).reset());
+    ["signin-btn", "signup-btn", "recharge-btn", "confirm-pay-btn", "ai-voice-btn"].forEach((id) => setButtonBusy(byId(id), false));
+    ["sidebar-name", "sidebar-email", "header-name", "settings-email", "user-initials", "welcome-title", "confirm-vendor", "confirm-amount"].forEach((id) => {
+        byId(id).textContent = "";
+    });
+    renderAccount({});
+    byId("recent-vendors-list").replaceChildren();
+    byId("ai-messages").replaceChildren();
+    const welcome = document.createElement("div");
+    welcome.className = "message assistant";
+    welcome.dataset.i18n = "ai.welcome";
+    welcome.textContent = (translations[currentLang] || translations.en)["ai.welcome"];
+    byId("ai-messages").appendChild(welcome);
+    showConfirmModal(false);
+    showPage("dashboard");
+    window.clearTimeout(showToast.timer);
+    byId("toast").textContent = "";
+    byId("toast").classList.remove("visible");
+    setVoiceBubble("", false);
+    window.speechSynthesis?.cancel();
+    activeRecognition?.abort();
+    activeRecognition = null;
+    activeCheckout?.close();
+    activeCheckout = null;
 }
 
 function leaveApp() {
-    if (realtimeChannel && supabaseClient) void supabaseClient.removeChannel(realtimeChannel);
-    realtimeChannel = null;
+    sessionVersion += 1;
     currentUser = null;
     currentSession = null;
     lastAccount = null;
+    window.clearTimeout(refreshTimer);
     window.clearInterval(fallbackRefreshTimer);
+    if (realtimeChannel && supabaseClient) void supabaseClient.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+    clearSessionData();
     byId("app-shell").classList.add("hidden");
     byId("auth-screen").classList.remove("hidden");
     showAuthPanel("signin");
@@ -955,8 +1019,9 @@ function leaveApp() {
 }
 
 async function signOut() {
-    if (supabaseClient) await supabaseClient.auth.signOut();
+    const signingOut = supabaseClient?.auth.signOut();
     leaveApp();
+    await signingOut;
 }
 
 function setRealtimeStatus(text, connected) {
@@ -966,36 +1031,46 @@ function setRealtimeStatus(text, connected) {
     byId("settings-realtime").textContent = text;
 }
 
-async function setupRealtime() {
-    if (!supabaseClient || !currentUser) return;
+async function setupRealtime(version = sessionVersion) {
+    if (!supabaseClient || !isCurrentSession(version)) return;
     if (realtimeChannel) await supabaseClient.removeChannel(realtimeChannel);
+    if (!isCurrentSession(version)) return;
     setRealtimeStatus("Connecting live updates…", false);
     realtimeChannel = supabaseClient
         .channel(`easypay-wallet-${currentUser.id}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `id=eq.${currentUser.id}` }, scheduleDashboardRefresh)
-        .on("postgres_changes", { event: "*", schema: "public", table: "transactions", filter: `user_id=eq.${currentUser.id}` }, scheduleDashboardRefresh)
+        .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `id=eq.${currentUser.id}` }, () => scheduleDashboardRefresh(version))
+        .on("postgres_changes", { event: "*", schema: "public", table: "transactions", filter: `user_id=eq.${currentUser.id}` }, () => scheduleDashboardRefresh(version))
         .subscribe((status) => {
+            if (!isCurrentSession(version)) return;
             if (status === "SUBSCRIBED") setRealtimeStatus("Live updates connected", true);
             if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) setRealtimeStatus("Live updates unavailable — refreshing periodically", false);
         });
 
     window.clearInterval(fallbackRefreshTimer);
-    fallbackRefreshTimer = window.setInterval(() => void loadDashboard(false), 45000);
+    fallbackRefreshTimer = window.setInterval(() => {
+        if (isCurrentSession(version)) void loadDashboard(false);
+    }, 45000);
 }
 
-function scheduleDashboardRefresh() {
+function scheduleDashboardRefresh(version = sessionVersion) {
+    if (!isCurrentSession(version)) return;
     window.clearTimeout(refreshTimer);
-    refreshTimer = window.setTimeout(() => void loadDashboard(false), 180);
+    refreshTimer = window.setTimeout(() => {
+        if (isCurrentSession(version)) void loadDashboard(false);
+    }, 180);
 }
 
 async function loadDashboard(withInsight = false) {
-    if (!currentUser) return;
+    const version = sessionVersion;
+    if (!isCurrentSession(version)) return;
     try {
         const data = await api("/account");
+        if (!isCurrentSession(version)) return;
         lastAccount = data;
         renderAccount(data);
         if (withInsight) void loadInsight();
     } catch (error) {
+        if (!isCurrentSession(version)) return;
         showToast(apiErrorMessage(error), true);
     }
 }
@@ -1046,8 +1121,10 @@ function renderTransactions(target, transactions) {
 }
 
 async function loadInsight() {
+    const version = sessionVersion;
     try {
         const data = await api("/insight");
+        if (!isCurrentSession(version)) return;
         appendMessage("assistant", data.answer);
     } catch (_) {
         // The dashboard remains usable even if Ollama is stopped or still loading.
@@ -1073,6 +1150,8 @@ async function submitAiForm(event) {
 }
 
 async function submitAiPrompt(prompt, fromVoice) {
+    const version = sessionVersion;
+    if (!isCurrentSession(version)) return;
     appendMessage("user", prompt);
     try {
         const data = await api("/ask", { 
@@ -1082,10 +1161,12 @@ async function submitAiPrompt(prompt, fromVoice) {
                 lang: currentLang 
             }) 
         });
+        if (!isCurrentSession(version)) return;
         appendMessage("assistant", data.answer || "I am ready to help.");
         if (fromVoice) speak(data.answer || "I am ready to help.");
         if (data.type === "action") await handleAiAction(data.action, fromVoice);
     } catch (error) {
+        if (!isCurrentSession(version)) return;
         const message = apiErrorMessage(error);
         appendMessage("assistant", message);
         if (fromVoice) speak(message);
@@ -1116,6 +1197,8 @@ async function handleAiAction(action, fromVoice) {
 
 async function startRecharge(event) {
     event?.preventDefault();
+    const version = sessionVersion;
+    if (!isCurrentSession(version)) return;
     const amount = Number(byId("recharge-amount").value);
     if (!Number.isFinite(amount) || amount <= 0) return showToast("Enter a valid recharge amount.", true);
     if (!window.Razorpay) return showToast("Razorpay checkout did not load. Check your internet connection.", true);
@@ -1124,6 +1207,7 @@ async function startRecharge(event) {
     setButtonBusy(button, true, "Preparing checkout…");
     try {
         const order = await api("/recharge/create-order", { method: "POST", body: JSON.stringify({ amount }) });
+        if (!isCurrentSession(version)) return;
         if (!publicConfig.razorpay_key_id) throw new Error("Razorpay is not configured in backend/.env.");
         const checkout = new window.Razorpay({
             key: publicConfig.razorpay_key_id,
@@ -1135,6 +1219,7 @@ async function startRecharge(event) {
             prefill: { name: displayName(), email: currentUser?.email || "" },
             theme: { color: "#2563eb" },
             handler: async (payment) => {
+                if (!isCurrentSession(version)) return;
                 try {
                     await api("/recharge/verify", {
                         method: "POST",
@@ -1143,21 +1228,26 @@ async function startRecharge(event) {
                             razorpay_payment_id: payment.razorpay_payment_id,
                             razorpay_signature: payment.razorpay_signature,
                         }),
-                    });
+                    }, version);
+                    if (!isCurrentSession(version)) return;
                     byId("recharge-amount").value = "";
                     showToast("Recharge verified. Your wallet is updated.");
                     await loadDashboard(true);
+                    if (!isCurrentSession(version)) return;
                     showPage("dashboard");
                 } catch (error) {
+                    if (!isCurrentSession(version)) return;
                     showToast(`Payment succeeded, but wallet verification needs attention: ${apiErrorMessage(error)}`, true);
                 }
             },
         });
+        activeCheckout = checkout;
         checkout.open();
     } catch (error) {
+        if (!isCurrentSession(version)) return;
         showToast(apiErrorMessage(error), true);
     } finally {
-        setButtonBusy(button, false);
+        if (isCurrentSession(version)) setButtonBusy(button, false);
     }
 }
 
@@ -1181,6 +1271,8 @@ async function payVendor(event) {
 }
 
 async function executeVendorPayment(vendorName, amount, upiId = null) {
+    const version = sessionVersion;
+    if (!isCurrentSession(version)) return;
     const button = byId("confirm-pay-btn");
     setButtonBusy(button, true, "Processing…");
     try {
@@ -1192,14 +1284,17 @@ async function executeVendorPayment(vendorName, amount, upiId = null) {
                 amount,
             }),
         });
+        if (!isCurrentSession(version)) return;
         byId("vendor-form").reset();
         showToast(data.message || "Wallet payment recorded.");
         await loadDashboard(true);
+        if (!isCurrentSession(version)) return;
         showPage("dashboard");
     } catch (error) {
+        if (!isCurrentSession(version)) return;
         showToast(apiErrorMessage(error), true);
     } finally {
-        setButtonBusy(button, false);
+        if (isCurrentSession(version)) setButtonBusy(button, false);
     }
 }
 
@@ -1213,9 +1308,11 @@ async function handleConfirmPay() {
 }
 
 async function loadRecentVendors() {
+    const version = sessionVersion;
     const container = byId("recent-vendors-list");
     try {
         const vendors = await api("/vendors/recent");
+        if (!isCurrentSession(version)) return;
         container.replaceChildren();
         if (!vendors.length) {
             container.innerHTML = '<p class="empty-text">No recent vendors found.</p>';
@@ -1232,6 +1329,7 @@ async function loadRecentVendors() {
             container.appendChild(chip);
         });
     } catch (error) {
+        if (!isCurrentSession(version)) return;
         console.error("Failed to load recent vendors:", error);
     }
 }
@@ -1289,6 +1387,7 @@ function captureVoiceOnce() {
     if (!Recognition) return Promise.reject(new Error("Voice recognition is not supported in this browser. Try Chrome."));
     return new Promise((resolve, reject) => {
         const recognition = new Recognition();
+        activeRecognition = recognition;
         let settled = false;
         
         // Map currentLang to SpeechRecognition lang code
@@ -1315,6 +1414,7 @@ function captureVoiceOnce() {
             if (!settled) reject(new Error(`Voice input failed: ${event.error}`));
         };
         recognition.onend = () => {
+            if (activeRecognition === recognition) activeRecognition = null;
             if (!settled) reject(new Error("I did not hear anything. Please try again."));
         };
         recognition.start();
@@ -1322,23 +1422,32 @@ function captureVoiceOnce() {
 }
 
 async function startVoiceAssistant() {
+    const version = sessionVersion;
+    if (!isCurrentSession(version)) return;
     const button = byId("ai-voice-btn");
     setButtonBusy(button, true, "Listening…");
     try {
         setVoiceBubble("EasyPay AI is ready — tell me what you need.");
         await speak("Hello. You can ask for a wallet recharge, a vendor payment, or financial guidance. What would you like to do?");
+        if (!isCurrentSession(version)) return;
         setVoiceBubble("Listening…");
         const transcript = await captureVoiceOnce();
+        if (!isCurrentSession(version)) return;
         setVoiceBubble(`Heard: ${transcript}`);
         await submitAiPrompt(transcript, true);
-        window.setTimeout(() => setVoiceBubble("", false), 2500);
+        window.setTimeout(() => {
+            if (isCurrentSession(version)) setVoiceBubble("", false);
+        }, 2500);
     } catch (error) {
+        if (!isCurrentSession(version)) return;
         const message = apiErrorMessage(error);
         setVoiceBubble(message);
         showToast(message, true);
-        window.setTimeout(() => setVoiceBubble("", false), 3500);
+        window.setTimeout(() => {
+            if (isCurrentSession(version)) setVoiceBubble("", false);
+        }, 3500);
     } finally {
-        setButtonBusy(button, false);
+        if (isCurrentSession(version)) setButtonBusy(button, false);
     }
 }
 
