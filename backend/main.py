@@ -130,16 +130,30 @@ def _command_from_text(prompt: str) -> dict | None:
         return {"name": "recharge", "amount": amount}
 
     # Match "pay 25 to xcx", "send 50 to john", "payment of 100 to amazon", "transfer 20 to sally"
-    payment_match = re.search(
-        r"\b(pay|send|transfer|payment)\b.*?\b(\d+(?:\.\d{1,2})?)\b.*?\bto\b\s+(.+)",
+    # Scan each token once: failed commands must not retry overlapping suffixes.
+    command_seen = False
+    payment_amount = None
+    recipient_pattern = re.compile(r"\s+(.+)")
+    for token in re.finditer(
+        r"\n|\b(?:(?P<command>pay|send|transfer|payment)|"
+        r"(?P<amount>\d+(?:\.\d{1,2})?)|(?P<to>to))\b",
         prompt,
         flags=re.IGNORECASE,
-    )
-    if payment_match:
-        amount = float(payment_match.group(2))
-        vendor = payment_match.group(3).strip(" .,!?")
-        if vendor:
-            return {"name": "vendor_payment", "amount": amount, "vendor": vendor[:80]}
+    ):
+        if token.group(0) == "\n":
+            command_seen = False
+            payment_amount = None
+        elif token.group("command"):
+            command_seen = True
+        elif token.group("amount") and command_seen and payment_amount is None:
+            payment_amount = float(token.group("amount"))
+        elif token.group("to") and payment_amount is not None:
+            recipient_match = recipient_pattern.match(prompt, token.end())
+            if recipient_match:
+                vendor = recipient_match.group(1).strip(" .,!?")
+                if vendor:
+                    return {"name": "vendor_payment", "amount": payment_amount, "vendor": vendor[:80]}
+                return None
     return None
 
 
